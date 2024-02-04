@@ -8,11 +8,36 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
+
+type Version struct {
+	Major, Minor, Patch int
+}
+
+type SemVerList []Version
+
+func (s SemVerList) Len() int {
+	return len(s)
+}
+
+func (s SemVerList) Swap(i, j int) {
+	s[i], s[j] = s[j], s[i]
+}
+
+func (s SemVerList) Less(i, j int) bool {
+	if s[i].Major != s[j].Major {
+		return s[i].Major < s[j].Major
+	}
+	if s[i].Minor != s[j].Minor {
+		return s[i].Minor < s[j].Minor
+	}
+	return s[i].Patch < s[j].Patch
+}
 
 // Function to parse the current version from the version file
 func getCurrentModules() ([]string, []string, error) {
@@ -61,67 +86,71 @@ func getCurrentModules() ([]string, []string, error) {
 }
 
 // Function to parse the current version from the version file
-func parseCurrentVersion(moduleName, releaseType string) (string, error) {
+func parseCurrentVersion(moduleName, releaseType string) (Version, error) {
 	cmd := exec.Command("git", "tag", "--list", "--sort=-v:refname")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		log.Error().Err(err).Str("command", cmd.String()).Msg("error in the git command")
-		return "", err
+		return Version{Major: 0, Minor: 0, Patch: 0}, nil
 	}
 
 	tags := strings.Split(strings.TrimSpace(string(output)), "\n")
 	if len(tags) == 0 {
 		// No tags found
-		return "0.0.0", nil
+		return Version{Major: 0, Minor: 0, Patch: 0}, nil
 	}
 
 	// Extract versions and sort them in descending order
-	var versions []string
+	var versions SemVerList
 
-	re := regexp.MustCompile(fmt.Sprintf(`^(%s)/(%s)/v(\d+\.\d+\.\d+)$`, moduleName, releaseType))
+	re := regexp.MustCompile(fmt.Sprintf(`^(%s)/(%s)/v(\d+)\.(\d+)\.(\d+)$`, moduleName, releaseType))
 	for _, tag := range tags {
-		if matches := re.FindStringSubmatch(tag); len(matches) == 4 {
-			version := matches[3]
-
-			versions = append(versions, version)
+		if matches := re.FindStringSubmatch(tag); len(matches) == 6 {
+			major, err := strconv.Atoi(matches[3])
+			if err != nil {
+				log.Error().Msgf("invalid version parsing")
+				os.Exit(1)
+			}
+			minor, err := strconv.Atoi(matches[4])
+			if err != nil {
+				log.Error().Msgf("invalid version parsing")
+				os.Exit(1)
+			}
+			patch, err := strconv.Atoi(matches[5])
+			if err != nil {
+				log.Error().Msgf("invalid version parsing")
+				os.Exit(1)
+			}
+			versions = append(versions, Version{Major: major, Minor: minor, Patch: patch})
 		}
 	}
 
 	if len(versions) == 0 {
 		// No valid version tags found
-		return "0.0.0", nil
+		return Version{Major: 0, Minor: 0, Patch: 0}, nil
 	}
 
-	sort.Sort(sort.Reverse(sort.StringSlice(versions)))
+	sort.Sort(sort.Reverse(versions))
 
 	// Return the latest version
 	return versions[0], nil
 }
 
 // Function to generate the next version based on the specified pattern
-func generateNextVersion(moduleName, releaseType, currentVersion string) string {
-	// Parse major, minor, and patch versions
-	re := regexp.MustCompile(`(\d+)\.(\d+)\.(\d+)`)
-	matches := re.FindStringSubmatch(currentVersion)
-	if len(matches) != 4 {
-		return fmt.Sprintf("%s/%s/v%d.%d.%d", moduleName, releaseType, 0, 0, 1)
-	}
-
-	major, minor, patch := matches[1], matches[2], matches[3]
-
+func generateNextVersion(moduleName, releaseType string, currentVersion Version) string {
 	// Increment the patch version
-	nextPatch := fmt.Sprintf("%d", parseVersion(patch)+1)
-
+	nextVersion := currentVersion
+	nextVersion.Patch += 1
+	if nextVersion.Patch > 9 {
+		nextVersion.Minor += 1
+		nextVersion.Patch = 0
+	}
+	if nextVersion.Minor > 9 {
+		nextVersion.Major += 1
+		nextVersion.Minor = 0
+	}
 	// Construct the next version
-	nextVersion := fmt.Sprintf("%s/%s/v%s.%s.%s", moduleName, releaseType, major, minor, nextPatch)
-	return nextVersion
-}
-
-// Function to parse the minor version from semver
-func parseVersion(version string) int {
-	var num int
-	fmt.Sscanf(version, "%d", &num)
-	return num
+	return fmt.Sprintf("%s/%s/v%d.%d.%d", moduleName, releaseType, nextVersion.Major, nextVersion.Minor, nextVersion.Patch)
 }
 
 // Function to create a git tag
@@ -192,7 +221,7 @@ func main() {
 		log.Error().Err(err).Msgf("Error reading current version: %v", err)
 		return
 	}
-	log.Info().Str("version", currentVersion).Msgf("Current version")
+	log.Info().Interface("version", currentVersion).Msgf("Current version")
 
 	// Validate release type
 	if releaseType != "release" && releaseType != "staging" {
