@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -156,10 +157,34 @@ func main() {
 	scanner.Scan()
 	moduleName := scanner.Text()
 
+	if !slices.Contains(modules, moduleName) {
+		log.Info().Msg("Are you sure you want to create new module?")
+		scanner := bufio.NewScanner(os.Stdin)
+		scanner.Scan()
+		yesOrNo := scanner.Text()
+		if yesOrNo != "yes" {
+			log.Error().Msgf("invalid module selected")
+			os.Exit(1)
+			return
+		}
+	}
+
 	// Get input for release type
 	log.Info().Strs("releases", releases).Msg("Enter release type from list:")
 	scanner.Scan()
 	releaseType := scanner.Text()
+
+	if !slices.Contains(releases, releaseType) {
+		log.Info().Msg("Are you sure you want to create new release channel?")
+		scanner := bufio.NewScanner(os.Stdin)
+		scanner.Scan()
+		yesOrNo := scanner.Text()
+		if yesOrNo != "yes" {
+			log.Error().Msgf("invalid release channel selected")
+			os.Exit(1)
+			return
+		}
+	}
 
 	// Read and display the current version
 	currentVersion, err := parseCurrentVersion(moduleName, releaseType)
@@ -170,7 +195,7 @@ func main() {
 	log.Info().Str("version", currentVersion).Msgf("Current version")
 
 	// Validate release type
-	if releaseType != "release" && releaseType != "staging" && releaseType != "canary" {
+	if releaseType != "release" && releaseType != "staging" {
 		log.Error().Msg("Invalid release type. Exiting.")
 		return
 	}
@@ -187,6 +212,26 @@ func main() {
 	if err = createGitTag(nextVersion); err != nil {
 		log.Error().Msg("Error creating git tag. Exiting.")
 		return
+	}
+	if releaseType == "release" {
+		log.Info().Msg("Are you want to same version on staging?")
+		scanner := bufio.NewScanner(os.Stdin)
+		scanner.Scan()
+		yesOrNo := scanner.Text()
+		if yesOrNo == "yes" {
+			nextVersion := generateNextVersion(moduleName, "staging", currentVersion)
+			if nextVersion == "" {
+				log.Error().Msg("Error generating next version. Exiting.")
+				return
+			}
+
+			log.Info().Msgf("Generated next version: %s", nextVersion)
+
+			if err = createGitTag(nextVersion); err != nil {
+				log.Error().Msg("Error creating git tag. Exiting.")
+				return
+			}
+		}
 	}
 
 	log.Info().Msg("Tags updated in repository.")
