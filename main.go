@@ -42,7 +42,6 @@ func (s SemVerList) Less(i, j int) bool {
 // Function to parse the current version from the version file
 func getCurrentModules() ([]string, []string, error) {
 	cmd := exec.Command("git", "tag", "--list", "--sort=-v:refname")
-	fmt.Println(cmd.String())
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return []string{}, []string{}, err
@@ -77,9 +76,6 @@ func getCurrentModules() ([]string, []string, error) {
 	for key := range releaseTypeList {
 		releases = append(releases, key)
 	}
-
-	fmt.Println(modules)
-	fmt.Println(releases)
 
 	// Return the latest version
 	return modules, releases, nil
