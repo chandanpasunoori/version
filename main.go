@@ -239,7 +239,7 @@ func main() {
 		return
 	}
 	if releaseType == "release" {
-		log.Info().Msg("Are you want to same version on staging?")
+		log.Info().Msg("Are you want to same version on staging (yes/no)?")
 		scanner := bufio.NewScanner(os.Stdin)
 		scanner.Scan()
 		yesOrNo := scanner.Text()
