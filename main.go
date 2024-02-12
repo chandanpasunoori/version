@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"flag"
 	"fmt"
 	"os"
 	"os/exec"
@@ -38,6 +39,11 @@ func (s SemVerList) Less(i, j int) bool {
 	}
 	return s[i].Patch < s[j].Patch
 }
+
+var (
+	moduleName  string
+	releaseType string
+)
 
 // Function to parse the current version from the version file
 func getCurrentModules() ([]string, []string, error) {
@@ -168,6 +174,10 @@ func main() {
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "15:04:05"})
 	zerolog.SetGlobalLevel(zerolog.TraceLevel)
 
+	flag.StringVar(&moduleName, "m", "", "module name")
+	flag.StringVar(&releaseType, "r", "", "release type")
+	flag.Parse()
+
 	log.Info().Msg("Welcome to the Tag Generator CLI")
 
 	modules, releases, err := getCurrentModules()
@@ -176,38 +186,43 @@ func main() {
 		return
 	}
 
-	// Get input for module name
-	log.Info().Strs("modules", modules).Msg("Enter module name from list:")
-	scanner := bufio.NewScanner(os.Stdin)
-	scanner.Scan()
-	moduleName := scanner.Text()
-
-	if !slices.Contains(modules, moduleName) {
-		log.Info().Msg("Are you sure you want to create new module?")
+	if len(moduleName) == 0 {
+		// Get input for module name
+		log.Info().Strs("modules", modules).Msg("Enter module name from list:")
 		scanner := bufio.NewScanner(os.Stdin)
 		scanner.Scan()
-		yesOrNo := scanner.Text()
-		if yesOrNo != "yes" {
-			log.Error().Msgf("invalid module selected")
-			os.Exit(1)
-			return
+		moduleName = scanner.Text()
+
+		if !slices.Contains(modules, moduleName) {
+			log.Info().Msg("Are you sure you want to create new module?")
+			scanner := bufio.NewScanner(os.Stdin)
+			scanner.Scan()
+			yesOrNo := scanner.Text()
+			if yesOrNo != "yes" {
+				log.Error().Msgf("invalid module selected")
+				os.Exit(1)
+				return
+			}
 		}
 	}
 
-	// Get input for release type
-	log.Info().Strs("releases", releases).Msg("Enter release type from list:")
-	scanner.Scan()
-	releaseType := scanner.Text()
-
-	if !slices.Contains(releases, releaseType) {
-		log.Info().Msg("Are you sure you want to create new release channel?")
+	if len(releaseType) == 0 {
+		// Get input for release type
+		log.Info().Strs("releases", releases).Msg("Enter release type from list:")
 		scanner := bufio.NewScanner(os.Stdin)
 		scanner.Scan()
-		yesOrNo := scanner.Text()
-		if yesOrNo != "yes" {
-			log.Error().Msgf("invalid release channel selected")
-			os.Exit(1)
-			return
+		releaseType = scanner.Text()
+
+		if !slices.Contains(releases, releaseType) {
+			log.Info().Msg("Are you sure you want to create new release channel?")
+			scanner := bufio.NewScanner(os.Stdin)
+			scanner.Scan()
+			yesOrNo := scanner.Text()
+			if yesOrNo != "yes" {
+				log.Error().Msgf("invalid release channel selected")
+				os.Exit(1)
+				return
+			}
 		}
 	}
 
@@ -218,12 +233,6 @@ func main() {
 		return
 	}
 	log.Info().Interface("version", currentVersion).Msgf("Current version")
-
-	// Validate release type
-	if releaseType != "release" && releaseType != "staging" {
-		log.Error().Msg("Invalid release type. Exiting.")
-		return
-	}
 
 	// Generate and display the next version
 	nextVersion := generateNextVersion(moduleName, releaseType, currentVersion)
@@ -237,26 +246,6 @@ func main() {
 	if err = createGitTag(nextVersion); err != nil {
 		log.Error().Msg("Error creating git tag. Exiting.")
 		return
-	}
-	if releaseType == "release" {
-		log.Info().Msg("Are you want to same version on staging (yes/no)?")
-		scanner := bufio.NewScanner(os.Stdin)
-		scanner.Scan()
-		yesOrNo := scanner.Text()
-		if yesOrNo == "yes" {
-			nextVersion := generateNextVersion(moduleName, "staging", currentVersion)
-			if nextVersion == "" {
-				log.Error().Msg("Error generating next version. Exiting.")
-				return
-			}
-
-			log.Info().Msgf("Generated next version: %s", nextVersion)
-
-			if err = createGitTag(nextVersion); err != nil {
-				log.Error().Msg("Error creating git tag. Exiting.")
-				return
-			}
-		}
 	}
 
 	log.Info().Msg("Tags updated in repository.")
