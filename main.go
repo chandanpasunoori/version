@@ -194,7 +194,7 @@ func main() {
 		moduleName = scanner.Text()
 
 		if !slices.Contains(modules, moduleName) {
-			log.Info().Msg("Are you sure you want to create new module?")
+			log.Info().Msg("Are you sure you want to create new module (yes/no)?")
 			scanner := bufio.NewScanner(os.Stdin)
 			scanner.Scan()
 			yesOrNo := scanner.Text()
@@ -214,7 +214,7 @@ func main() {
 		releaseType = scanner.Text()
 
 		if !slices.Contains(releases, releaseType) {
-			log.Info().Msg("Are you sure you want to create new release channel?")
+			log.Info().Msg("Are you sure you want to create new release channel (yes/no)?")
 			scanner := bufio.NewScanner(os.Stdin)
 			scanner.Scan()
 			yesOrNo := scanner.Text()
@@ -226,26 +226,38 @@ func main() {
 		}
 	}
 
-	// Read and display the current version
-	currentVersion, err := parseCurrentVersion(moduleName, releaseType)
-	if err != nil {
-		log.Error().Err(err).Msgf("Error reading current version: %v", err)
-		return
-	}
-	log.Info().Interface("version", currentVersion).Msgf("Current version")
-
-	// Generate and display the next version
-	nextVersion := generateNextVersion(moduleName, releaseType, currentVersion)
-	if nextVersion == "" {
-		log.Error().Msg("Error generating next version. Exiting.")
+	if strings.ContainsRune(moduleName, ' ') || strings.ContainsRune(releaseType, ' ') {
+		log.Error().Msgf("invalid characters (space) in moduleName or releaseType")
+		os.Exit(1)
 		return
 	}
 
-	log.Info().Msgf("Generated next version: %s", nextVersion)
+	multiRelease := []string{releaseType}
+	if strings.ContainsRune(releaseType, ',') {
+		multiRelease = strings.Split(releaseType, ",")
+	}
+	for _, r := range multiRelease {
+		// Read and display the current version
+		currentVersion, err := parseCurrentVersion(moduleName, r)
+		if err != nil {
+			log.Error().Err(err).Msgf("Error reading current version: %v", err)
+			return
+		}
+		log.Info().Interface("version", currentVersion).Msgf("Current version")
 
-	if err = createGitTag(nextVersion); err != nil {
-		log.Error().Msg("Error creating git tag. Exiting.")
-		return
+		// Generate and display the next version
+		nextVersion := generateNextVersion(moduleName, r, currentVersion)
+		if nextVersion == "" {
+			log.Error().Msg("Error generating next version. Exiting.")
+			return
+		}
+
+		log.Info().Msgf("Generated next version: %s", nextVersion)
+
+		if err = createGitTag(nextVersion); err != nil {
+			log.Error().Msg("Error creating git tag. Exiting.")
+			return
+		}
 	}
 
 	log.Info().Msg("Tags updated in repository.")
