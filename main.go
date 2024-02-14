@@ -41,8 +41,8 @@ func (s SemVerList) Less(i, j int) bool {
 }
 
 var (
-	moduleName  string
-	releaseType string
+	moduleName     string
+	releaseChannel string
 )
 
 // Function to parse the current version from the version file
@@ -59,14 +59,14 @@ func getCurrentModules() ([]string, []string, error) {
 	}
 
 	moduleNameList := make(map[string]bool)
-	releaseTypeList := make(map[string]bool)
+	releaseChannelList := make(map[string]bool)
 
 	re := regexp.MustCompile(`^([a-z]+)/([a-z]+)/v(\d+\.\d+\.\d+)$`)
 	for _, tag := range tags {
 		if matches := re.FindStringSubmatch(tag); len(matches) == 4 {
 			module, release := matches[1], matches[2]
-			if _, ok := releaseTypeList[release]; !ok {
-				releaseTypeList[release] = true
+			if _, ok := releaseChannelList[release]; !ok {
+				releaseChannelList[release] = true
 			}
 			if _, ok := moduleNameList[module]; !ok {
 				moduleNameList[module] = true
@@ -79,7 +79,7 @@ func getCurrentModules() ([]string, []string, error) {
 		modules = append(modules, key)
 	}
 	var releases []string
-	for key := range releaseTypeList {
+	for key := range releaseChannelList {
 		releases = append(releases, key)
 	}
 
@@ -88,7 +88,7 @@ func getCurrentModules() ([]string, []string, error) {
 }
 
 // Function to parse the current version from the version file
-func parseCurrentVersion(moduleName, releaseType string) (Version, error) {
+func parseCurrentVersion(moduleName, releaseChannel string) (Version, error) {
 	cmd := exec.Command("git", "tag", "--list", "--sort=-v:refname")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -105,7 +105,7 @@ func parseCurrentVersion(moduleName, releaseType string) (Version, error) {
 	// Extract versions and sort them in descending order
 	var versions SemVerList
 
-	re := regexp.MustCompile(fmt.Sprintf(`^(%s)/(%s)/v(\d+)\.(\d+)\.(\d+)$`, moduleName, releaseType))
+	re := regexp.MustCompile(fmt.Sprintf(`^(%s)/(%s)/v(\d+)\.(\d+)\.(\d+)$`, moduleName, releaseChannel))
 	for _, tag := range tags {
 		if matches := re.FindStringSubmatch(tag); len(matches) == 6 {
 			major, err := strconv.Atoi(matches[3])
@@ -139,7 +139,7 @@ func parseCurrentVersion(moduleName, releaseType string) (Version, error) {
 }
 
 // Function to generate the next version based on the specified pattern
-func generateNextVersion(moduleName, releaseType string, currentVersion Version) string {
+func generateNextVersion(moduleName, releaseChannel string, currentVersion Version) string {
 	// Increment the patch version
 	nextVersion := currentVersion
 	nextVersion.Patch += 1
@@ -152,7 +152,7 @@ func generateNextVersion(moduleName, releaseType string, currentVersion Version)
 		nextVersion.Minor = 0
 	}
 	// Construct the next version
-	return fmt.Sprintf("%s/%s/v%d.%d.%d", moduleName, releaseType, nextVersion.Major, nextVersion.Minor, nextVersion.Patch)
+	return fmt.Sprintf("%s/%s/v%d.%d.%d", moduleName, releaseChannel, nextVersion.Major, nextVersion.Minor, nextVersion.Patch)
 }
 
 // Function to create a git tag
@@ -175,7 +175,7 @@ func main() {
 	zerolog.SetGlobalLevel(zerolog.TraceLevel)
 
 	flag.StringVar(&moduleName, "m", "", "module name")
-	flag.StringVar(&releaseType, "r", "", "release type")
+	flag.StringVar(&releaseChannel, "r", "", "release channel")
 	flag.Parse()
 
 	log.Info().Msg("Welcome to the Tag Generator CLI")
@@ -199,52 +199,64 @@ func main() {
 			scanner.Scan()
 			yesOrNo := scanner.Text()
 			if yesOrNo != "yes" {
-				log.Error().Msgf("invalid module selected")
+				log.Error().Msgf("invalid module name entered")
 				os.Exit(1)
 				return
 			}
 		}
 	}
 
-	if len(releaseType) == 0 {
-		// Get input for release type
-		log.Info().Strs("releases", releases).Msg("Enter release type from list:")
+	if len(releaseChannel) == 0 {
+		// Get input for release channel
+		log.Info().Strs("releases", releases).Msg("Enter release channel from list:")
 		scanner := bufio.NewScanner(os.Stdin)
 		scanner.Scan()
-		releaseType = scanner.Text()
+		releaseChannel = scanner.Text()
 
-		if !slices.Contains(releases, releaseType) {
+		if !slices.Contains(releases, releaseChannel) {
 			log.Info().Msg("Are you sure you want to create new release channel (yes/no)?")
 			scanner := bufio.NewScanner(os.Stdin)
 			scanner.Scan()
 			yesOrNo := scanner.Text()
 			if yesOrNo != "yes" {
-				log.Error().Msgf("invalid release channel selected")
+				log.Error().Msgf("invalid release channel entered")
 				os.Exit(1)
 				return
 			}
 		}
 	}
 
-	if strings.ContainsRune(moduleName, ' ') || strings.ContainsRune(releaseType, ' ') {
-		log.Error().Msgf("invalid characters (space) in moduleName or releaseType")
+	if strings.ContainsRune(moduleName, ' ') || strings.ContainsRune(releaseChannel, ' ') {
+		log.Error().Msgf("invalid characters (space) in module name or release channel")
 		os.Exit(1)
 		return
 	}
 
-	multiRelease := []string{releaseType}
-	if strings.ContainsRune(releaseType, ',') {
-		multiRelease = strings.Split(releaseType, ",")
+	if len(strings.TrimSpace(releaseChannel)) == 0 {
+		log.Error().Msgf("invalid module name entered")
+		os.Exit(1)
 	}
-	for _, r := range multiRelease {
-		// Read and display the current version
-		currentVersion, err := parseCurrentVersion(moduleName, r)
-		if err != nil {
-			log.Error().Err(err).Msgf("Error reading current version: %v", err)
-			return
-		}
-		log.Info().Interface("version", currentVersion).Msgf("Current version")
 
+	if len(strings.TrimSpace(releaseChannel)) == 0 {
+		log.Error().Msgf("invalid release channel entered")
+		os.Exit(1)
+	}
+
+	multiRelease := []string{releaseChannel}
+	if strings.ContainsRune(releaseChannel, ',') {
+		log.Info().Msg("please note first release channel version will be used for all subsequent release channels")
+		multiRelease = strings.Split(releaseChannel, ",")
+	}
+
+	// Read and display the current version
+	currentVersion, err := parseCurrentVersion(moduleName, multiRelease[0])
+	if err != nil {
+		log.Error().Err(err).Msgf("Error reading current version: %v", err)
+		return
+	}
+
+	log.Info().Interface("version", currentVersion).Msgf("Current version")
+	for _, r := range multiRelease {
 		// Generate and display the next version
 		nextVersion := generateNextVersion(moduleName, r, currentVersion)
 		if nextVersion == "" {
@@ -260,5 +272,5 @@ func main() {
 		}
 	}
 
-	log.Info().Msg("Tags updated in repository.")
+	log.Info().Msg("Tags updated in local repository, 'git push --tags' and enjoy")
 }
