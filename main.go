@@ -88,7 +88,7 @@ func getCurrentModules() ([]string, []string, error) {
 }
 
 // Function to parse the current version from the version file
-func parseCurrentVersion(moduleName, releaseChannel string) (Version, error) {
+func parseCurrentVersion(moduleName string, releaseChannel []string) (Version, error) {
 	cmd := exec.Command("git", "tag", "--list", "--sort=-v:refname")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -105,25 +105,27 @@ func parseCurrentVersion(moduleName, releaseChannel string) (Version, error) {
 	// Extract versions and sort them in descending order
 	var versions SemVerList
 
-	re := regexp.MustCompile(fmt.Sprintf(`^(%s)/(%s)/v(\d+)\.(\d+)\.(\d+)$`, moduleName, releaseChannel))
-	for _, tag := range tags {
-		if matches := re.FindStringSubmatch(tag); len(matches) == 6 {
-			major, err := strconv.Atoi(matches[3])
-			if err != nil {
-				log.Error().Msgf("invalid version parsing")
-				os.Exit(1)
+	for _, rc := range releaseChannel {
+		re := regexp.MustCompile(fmt.Sprintf(`^(%s)/(%s)/v(\d+)\.(\d+)\.(\d+)$`, moduleName, rc))
+		for _, tag := range tags {
+			if matches := re.FindStringSubmatch(tag); len(matches) == 6 {
+				major, err := strconv.Atoi(matches[3])
+				if err != nil {
+					log.Error().Msgf("invalid version parsing")
+					os.Exit(1)
+				}
+				minor, err := strconv.Atoi(matches[4])
+				if err != nil {
+					log.Error().Msgf("invalid version parsing")
+					os.Exit(1)
+				}
+				patch, err := strconv.Atoi(matches[5])
+				if err != nil {
+					log.Error().Msgf("invalid version parsing")
+					os.Exit(1)
+				}
+				versions = append(versions, Version{Major: major, Minor: minor, Patch: patch})
 			}
-			minor, err := strconv.Atoi(matches[4])
-			if err != nil {
-				log.Error().Msgf("invalid version parsing")
-				os.Exit(1)
-			}
-			patch, err := strconv.Atoi(matches[5])
-			if err != nil {
-				log.Error().Msgf("invalid version parsing")
-				os.Exit(1)
-			}
-			versions = append(versions, Version{Major: major, Minor: minor, Patch: patch})
 		}
 	}
 
@@ -249,7 +251,7 @@ func main() {
 	}
 
 	// Read and display the current version
-	currentVersion, err := parseCurrentVersion(moduleName, multiRelease[0])
+	currentVersion, err := parseCurrentVersion(moduleName, multiRelease)
 	if err != nil {
 		log.Error().Err(err).Msgf("Error reading current version: %v", err)
 		return
