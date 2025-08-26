@@ -91,63 +91,49 @@ func createTestRepo(t *testing.T, tags []string) (string, func()) {
 		t.Fatalf("Failed to create temp directory: %v", err)
 	}
 
-	// Change to temp directory and set up git
-	originalDir, err := os.Getwd()
+	// Initialize git repository using go-git
+	repo, err := git.PlainInit(tempDir, false)
 	if err != nil {
-		t.Fatalf("Failed to get current directory: %v", err)
-	}
-	
-	err = os.Chdir(tempDir)
-	if err != nil {
-		t.Fatalf("Failed to change directory: %v", err)
-	}
-
-	// Initialize git repository with git commands - more reliable for testing
-	if err := exec.Command("git", "init").Run(); err != nil {
-		os.Chdir(originalDir)
-		t.Fatalf("Failed to git init: %v", err)
-	}
-	
-	if err := exec.Command("git", "config", "user.name", "Test User").Run(); err != nil {
-		os.Chdir(originalDir)
-		t.Fatalf("Failed to set git user.name: %v", err)
-	}
-	
-	if err := exec.Command("git", "config", "user.email", "test@example.com").Run(); err != nil {
-		os.Chdir(originalDir)
-		t.Fatalf("Failed to set git user.email: %v", err)
+		t.Fatalf("Failed to initialize git repository: %v", err)
 	}
 
 	// Create a test file
 	testFile := filepath.Join(tempDir, "test.txt")
 	err = os.WriteFile(testFile, []byte("test content"), 0644)
 	if err != nil {
-		os.Chdir(originalDir)
 		t.Fatalf("Failed to create test file: %v", err)
 	}
 
-	// Add and commit the test file using git commands
-	if err := exec.Command("git", "add", "test.txt").Run(); err != nil {
-		os.Chdir(originalDir)
-		t.Fatalf("Failed to git add: %v", err)
+	// Add the file to the index
+	w, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("Failed to get worktree: %v", err)
 	}
-	
-	if err := exec.Command("git", "commit", "-m", "Initial commit").Run(); err != nil {
-		os.Chdir(originalDir)
-		t.Fatalf("Failed to git commit: %v", err)
+	_, err = w.Add("test.txt")
+	if err != nil {
+		t.Fatalf("Failed to add file to index: %v", err)
 	}
 
-	// Create test tags using git commands
+	// Commit the file
+	commitMsg := "Initial commit"
+	commit, err := w.Commit(commitMsg, &git.CommitOptions{
+		Author: &object.Signature{
+			Name:  "Test User",
+			Email: "test@example.com",
+			When:  time.Now(),
+		},
+	})
+	if err != nil {
+		t.Fatalf("Failed to commit: %v", err)
+	}
+
+	// Create test tags using go-git
 	for _, tagName := range tags {
-		if err := exec.Command("git", "tag", tagName).Run(); err != nil {
-			os.Chdir(originalDir)
+		_, err := repo.CreateTag(tagName, commit, nil)
+		if err != nil {
 			t.Fatalf("Failed to create tag %s: %v", tagName, err)
 		}
 	}
-
-	// Return to original directory
-	os.Chdir(originalDir)
-
 	cleanup := func() {
 		os.RemoveAll(tempDir)
 	}
