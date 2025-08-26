@@ -8,9 +8,11 @@ import (
 	"reflect"
 	"sort"
 	"testing"
+	"time"
 
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/object"
 )
 
 // Helper function to create a temporary git repository with test tags for tests and benchmarks
@@ -53,25 +55,25 @@ func createTestRepoTB(tb testing.TB, tags []string) (string, func()) {
 	err = os.WriteFile(testFile, []byte("test content"), 0644)
 	if err != nil {
 		os.Chdir(originalDir)
-		b.Fatalf("Failed to create test file: %v", err)
+		tb.Fatalf("Failed to create test file: %v", err)
 	}
 
 	// Add and commit the test file using git commands
 	if err := exec.Command("git", "add", "test.txt").Run(); err != nil {
 		os.Chdir(originalDir)
-		b.Fatalf("Failed to git add: %v", err)
+		tb.Fatalf("Failed to git add: %v", err)
 	}
 	
 	if err := exec.Command("git", "commit", "-m", "Initial commit").Run(); err != nil {
 		os.Chdir(originalDir)
-		b.Fatalf("Failed to git commit: %v", err)
+		tb.Fatalf("Failed to git commit: %v", err)
 	}
 
 	// Create test tags using git commands
 	for _, tagName := range tags {
 		if err := exec.Command("git", "tag", tagName).Run(); err != nil {
 			os.Chdir(originalDir)
-			b.Fatalf("Failed to create tag %s: %v", tagName, err)
+			tb.Fatalf("Failed to create tag %s: %v", tagName, err)
 		}
 	}
 
@@ -703,7 +705,7 @@ func BenchmarkGetCurrentModules(b *testing.B) {
 		tags[i] = fmt.Sprintf("module%d/dev/v1.%d.%d", i%10, i/10, i%10)
 	}
 
-	tempDir, cleanup := createTestRepoForBench(b, tags)
+	tempDir, cleanup := createTestRepoTB(b, tags)
 	defer cleanup()
 
 	originalDir, _ := os.Getwd()
@@ -722,7 +724,7 @@ func BenchmarkParseCurrentVersion(b *testing.B) {
 		tags[i] = fmt.Sprintf("testmodule/dev/v%d.%d.%d", i/25, (i%25)/5, i%5)
 	}
 
-	tempDir, cleanup := createTestRepoForBench(b, tags)
+	tempDir, cleanup := createTestRepoTB(b, tags)
 	defer cleanup()
 
 	originalDir, _ := os.Getwd()

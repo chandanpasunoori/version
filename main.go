@@ -207,9 +207,7 @@ func createGitTag(tag string) error {
 	}
 
 	// Create the tag
-	_, err = repo.CreateTag(tag, head.Hash(), &git.CreateTagOptions{
-		Message: fmt.Sprintf("Tag %s", tag),
-	})
+	_, err = repo.CreateTag(tag, head.Hash(), nil)
 	if err != nil {
 		log.Error().Err(err).Str("tag", tag).Msg("Git tag create error")
 		return err
