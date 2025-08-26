@@ -13,39 +13,39 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 )
 
-// Helper function to create a temporary git repository with test tags for benchmarks
-func createTestRepoForBench(b *testing.B, tags []string) (string, func()) {
+// Helper function to create a temporary git repository with test tags for tests and benchmarks
+func createTestRepoTB(tb testing.TB, tags []string) (string, func()) {
 	// Create temporary directory
 	tempDir, err := os.MkdirTemp("", "version-test-*")
 	if err != nil {
-		b.Fatalf("Failed to create temp directory: %v", err)
+		tb.Fatalf("Failed to create temp directory: %v", err)
 	}
 
 	// Change to temp directory and set up git
 	originalDir, err := os.Getwd()
 	if err != nil {
-		b.Fatalf("Failed to get current directory: %v", err)
+		tb.Fatalf("Failed to get current directory: %v", err)
 	}
 	
 	err = os.Chdir(tempDir)
 	if err != nil {
-		b.Fatalf("Failed to change directory: %v", err)
+		tb.Fatalf("Failed to change directory: %v", err)
 	}
 
 	// Initialize git repository with git commands
 	if err := exec.Command("git", "init").Run(); err != nil {
 		os.Chdir(originalDir)
-		b.Fatalf("Failed to git init: %v", err)
+		tb.Fatalf("Failed to git init: %v", err)
 	}
 	
 	if err := exec.Command("git", "config", "user.name", "Test User").Run(); err != nil {
 		os.Chdir(originalDir)
-		b.Fatalf("Failed to set git user.name: %v", err)
+		tb.Fatalf("Failed to set git user.name: %v", err)
 	}
 	
 	if err := exec.Command("git", "config", "user.email", "test@example.com").Run(); err != nil {
 		os.Chdir(originalDir)
-		b.Fatalf("Failed to set git user.email: %v", err)
+		tb.Fatalf("Failed to set git user.email: %v", err)
 	}
 
 	// Create a test file
