@@ -5,13 +5,14 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"os/exec"
 	"regexp"
 	"slices"
 	"sort"
 	"strconv"
 	"strings"
 
+	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
@@ -47,15 +48,30 @@ var (
 
 // Function to parse the current version from the version file
 func getCurrentModules() ([]string, []string, error) {
-	cmd := exec.Command("git", "tag", "--list", "--sort=-v:refname")
-	output, err := cmd.CombinedOutput()
+	// Open the git repository
+	repo, err := git.PlainOpen(".")
 	if err != nil {
 		return []string{}, []string{}, err
 	}
 
-	tags := strings.Split(strings.TrimSpace(string(output)), "\n")
-	if len(tags) == 0 {
+	// Get tag references
+	tagRefs, err := repo.Tags()
+	if err != nil {
 		return []string{}, []string{}, err
+	}
+
+	var tags []string
+	err = tagRefs.ForEach(func(ref *plumbing.Reference) error {
+		tagName := ref.Name().Short()
+		tags = append(tags, tagName)
+		return nil
+	})
+	if err != nil {
+		return []string{}, []string{}, err
+	}
+
+	if len(tags) == 0 {
+		return []string{}, []string{}, nil
 	}
 
 	moduleNameList := make(map[string]bool)
@@ -89,14 +105,31 @@ func getCurrentModules() ([]string, []string, error) {
 
 // Function to parse the current version from the version file
 func parseCurrentVersion(moduleName string, releaseChannel []string) (Version, error) {
-	cmd := exec.Command("git", "tag", "--list", "--sort=-v:refname")
-	output, err := cmd.CombinedOutput()
+	// Open the git repository
+	repo, err := git.PlainOpen(".")
 	if err != nil {
-		log.Error().Err(err).Str("command", cmd.String()).Msg("error in the git command")
+		log.Error().Err(err).Msg("Failed to open git repository")
 		return Version{Major: 0, Minor: 0, Patch: 0}, nil
 	}
 
-	tags := strings.Split(strings.TrimSpace(string(output)), "\n")
+	// Get tag references
+	tagRefs, err := repo.Tags()
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to get git tags")
+		return Version{Major: 0, Minor: 0, Patch: 0}, nil
+	}
+
+	var tags []string
+	err = tagRefs.ForEach(func(ref *plumbing.Reference) error {
+		tagName := ref.Name().Short()
+		tags = append(tags, tagName)
+		return nil
+	})
+	if err != nil {
+		log.Error().Err(err).Msg("Error iterating over tags")
+		return Version{Major: 0, Minor: 0, Patch: 0}, nil
+	}
+
 	if len(tags) == 0 {
 		// No tags found
 		return Version{Major: 0, Minor: 0, Patch: 0}, nil
@@ -159,10 +192,24 @@ func generateNextVersion(moduleName, releaseChannel string, currentVersion Versi
 
 // Function to create a git tag
 func createGitTag(tag string) error {
-	cmd := exec.Command("git", "tag", tag)
-	err := cmd.Run()
+	// Open the git repository
+	repo, err := git.PlainOpen(".")
 	if err != nil {
-		log.Error().Err(err).Str("command", cmd.String()).Str("tag", tag).Msg("Git tag create error")
+		log.Error().Err(err).Str("tag", tag).Msg("Failed to open git repository")
+		return err
+	}
+
+	// Get the HEAD reference to find the current commit
+	head, err := repo.Head()
+	if err != nil {
+		log.Error().Err(err).Str("tag", tag).Msg("Failed to get HEAD reference")
+		return err
+	}
+
+	// Create the tag
+	_, err = repo.CreateTag(tag, head.Hash(), nil)
+	if err != nil {
+		log.Error().Err(err).Str("tag", tag).Msg("Git tag create error")
 		return err
 	}
 
