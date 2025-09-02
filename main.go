@@ -17,6 +17,13 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+// Build-time variables injected via ldflags
+var (
+	buildTime   = "unknown"
+	commitHash  = "unknown"
+	buildID     = "unknown"
+)
+
 type Version struct {
 	Major, Minor, Patch int
 }
@@ -222,6 +229,13 @@ func main() {
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: "15:04:05"})
 	zerolog.SetGlobalLevel(zerolog.TraceLevel)
+
+	// Log unique application build information first
+	log.Info().
+		Str("buildTime", buildTime).
+		Str("commitHash", commitHash).
+		Str("buildID", buildID).
+		Msg("Application started - unique build info")
 
 	flag.StringVar(&moduleName, "m", "", "module name")
 	flag.StringVar(&releaseChannel, "r", "", "release channel")
