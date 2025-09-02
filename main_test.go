@@ -736,3 +736,23 @@ func BenchmarkParseCurrentVersion(b *testing.B) {
 		parseCurrentVersion("testmodule", []string{"dev"})
 	}
 }
+
+// Test build information variables
+func TestBuildInfo(t *testing.T) {
+	tests := []struct {
+		name     string
+		variable string
+	}{
+		{"buildTime variable exists", buildTime},
+		{"commitHash variable exists", commitHash},
+		{"buildID variable exists", buildID},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.variable == "" {
+				t.Errorf("Build variable should not be empty")
+			}
+		})
+	}
+}
