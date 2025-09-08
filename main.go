@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/rs/zerolog"
@@ -44,7 +45,92 @@ func (s SemVerList) Less(i, j int) bool {
 var (
 	moduleName     string
 	releaseChannel string
+	interactive    bool
 )
+
+// listModel is a simple list selection model for bubbletea
+type listModel struct {
+	choices  []string
+	cursor   int
+	selected string
+	title    string
+	done     bool
+}
+
+func (m listModel) Init() tea.Cmd {
+	return nil
+}
+
+func (m listModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "ctrl+c", "q", "esc":
+			return m, tea.Quit
+		case "enter":
+			if len(m.choices) > 0 {
+				m.selected = m.choices[m.cursor]
+				m.done = true
+			}
+			return m, tea.Quit
+		case "up", "k":
+			if m.cursor > 0 {
+				m.cursor--
+			}
+		case "down", "j":
+			if m.cursor < len(m.choices)-1 {
+				m.cursor++
+			}
+		}
+	}
+	return m, nil
+}
+
+func (m listModel) View() string {
+	s := fmt.Sprintf("%s\n\n", m.title)
+
+	if len(m.choices) == 0 {
+		s += "No items available.\n\n"
+		s += "Press 'q' to quit."
+		return s
+	}
+
+	for i, choice := range m.choices {
+		cursor := " "
+		if m.cursor == i {
+			cursor = ">"
+		}
+		s += fmt.Sprintf("%s %s\n", cursor, choice)
+	}
+
+	s += "\nPress 'enter' to select, 'q' to quit."
+	return s
+}
+
+// runInteractiveSelection runs an interactive list selection and returns the selected item
+func runInteractiveSelection(title string, choices []string) (string, error) {
+	if len(choices) == 0 {
+		return "", fmt.Errorf("no choices available")
+	}
+
+	model := listModel{
+		choices: choices,
+		title:   title,
+		cursor:  0,
+	}
+
+	p := tea.NewProgram(model)
+	finalModel, err := p.Run()
+	if err != nil {
+		return "", err
+	}
+
+	if m, ok := finalModel.(listModel); ok && m.done {
+		return m.selected, nil
+	}
+
+	return "", fmt.Errorf("no selection made")
+}
 
 // Function to parse the current version from the version file
 func getCurrentModules() ([]string, []string, error) {
@@ -225,6 +311,7 @@ func main() {
 
 	flag.StringVar(&moduleName, "m", "", "module name")
 	flag.StringVar(&releaseChannel, "r", "", "release channel")
+	flag.BoolVar(&interactive, "i", false, "enable interactive mode with bubbletea list selection")
 	flag.Parse()
 
 	log.Info().Msg("Welcome to the Tag Generator CLI")
@@ -235,42 +322,89 @@ func main() {
 		return
 	}
 
-	if len(moduleName) == 0 {
-		// Get input for module name
-		log.Info().Strs("modules", modules).Msg("Enter module name from list:")
-		scanner := bufio.NewScanner(os.Stdin)
-		scanner.Scan()
-		moduleName = scanner.Text()
+	// Create a single scanner to avoid stdin buffer issues
+	var inputScanner *bufio.Scanner
 
-		if !slices.Contains(modules, moduleName) {
-			log.Info().Msg("Are you sure you want to create new module (yes/no)?")
-			scanner := bufio.NewScanner(os.Stdin)
-			scanner.Scan()
-			yesOrNo := scanner.Text()
-			if yesOrNo != "yes" {
-				log.Error().Msgf("invalid module name entered")
-				os.Exit(1)
-				return
+	if len(moduleName) == 0 {
+		if interactive {
+			// Interactive mode using bubbletea
+			if len(modules) > 0 {
+				selected, err := runInteractiveSelection("Select a module:", modules)
+				if err != nil {
+					log.Error().Err(err).Msg("Error in interactive module selection")
+					os.Exit(1)
+					return
+				}
+				moduleName = selected
+			} else {
+				// No existing modules, fallback to text input
+				log.Info().Msg("No existing modules found. Please enter a new module name:")
+				if inputScanner == nil {
+					inputScanner = bufio.NewScanner(os.Stdin)
+				}
+				inputScanner.Scan()
+				moduleName = inputScanner.Text()
+			}
+		} else {
+			// Traditional text input mode
+			log.Info().Strs("modules", modules).Msg("Enter module name from list:")
+			if inputScanner == nil {
+				inputScanner = bufio.NewScanner(os.Stdin)
+			}
+			inputScanner.Scan()
+			moduleName = inputScanner.Text()
+
+			if !slices.Contains(modules, moduleName) {
+				log.Info().Msg("Are you sure you want to create new module (yes/no)?")
+				inputScanner.Scan()
+				yesOrNo := inputScanner.Text()
+				if yesOrNo != "yes" {
+					log.Error().Msgf("invalid module name entered")
+					os.Exit(1)
+					return
+				}
 			}
 		}
 	}
 
 	if len(releaseChannel) == 0 {
-		// Get input for release channel
-		log.Info().Strs("releases", releases).Msg("Enter release channel from list:")
-		scanner := bufio.NewScanner(os.Stdin)
-		scanner.Scan()
-		releaseChannel = scanner.Text()
+		if interactive {
+			// Interactive mode using bubbletea
+			if len(releases) > 0 {
+				selected, err := runInteractiveSelection("Select a release channel:", releases)
+				if err != nil {
+					log.Error().Err(err).Msg("Error in interactive release channel selection")
+					os.Exit(1)
+					return
+				}
+				releaseChannel = selected
+			} else {
+				// No existing releases, fallback to text input
+				log.Info().Msg("No existing release channels found. Please enter a new release channel:")
+				if inputScanner == nil {
+					inputScanner = bufio.NewScanner(os.Stdin)
+				}
+				inputScanner.Scan()
+				releaseChannel = inputScanner.Text()
+			}
+		} else {
+			// Traditional text input mode
+			log.Info().Strs("releases", releases).Msg("Enter release channel from list:")
+			if inputScanner == nil {
+				inputScanner = bufio.NewScanner(os.Stdin)
+			}
+			inputScanner.Scan()
+			releaseChannel = inputScanner.Text()
 
-		if !slices.Contains(releases, releaseChannel) {
-			log.Info().Msg("Are you sure you want to create new release channel (yes/no)?")
-			scanner := bufio.NewScanner(os.Stdin)
-			scanner.Scan()
-			yesOrNo := scanner.Text()
-			if yesOrNo != "yes" {
-				log.Error().Msgf("invalid release channel entered")
-				os.Exit(1)
-				return
+			if !slices.Contains(releases, releaseChannel) {
+				log.Info().Msg("Are you sure you want to create new release channel (yes/no)?")
+				inputScanner.Scan()
+				yesOrNo := inputScanner.Text()
+				if yesOrNo != "yes" {
+					log.Error().Msgf("invalid release channel entered")
+					os.Exit(1)
+					return
+				}
 			}
 		}
 	}
@@ -281,7 +415,7 @@ func main() {
 		return
 	}
 
-	if len(strings.TrimSpace(releaseChannel)) == 0 {
+	if len(strings.TrimSpace(moduleName)) == 0 {
 		log.Error().Msgf("invalid module name entered")
 		os.Exit(1)
 	}
