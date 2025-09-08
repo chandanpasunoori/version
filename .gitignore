@@ -1,2 +1,5 @@
 version.txt
 version
+version-tool
+*.exe
+*.bin
