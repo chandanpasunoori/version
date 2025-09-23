@@ -5,9 +5,11 @@ Welcome to the Tag Generator CLI. This CLI helps you generate and manage version
 ## Features
 
 - **Interactive Module Selection**: Choose the module interactively using a beautiful terminal interface powered by bubbletea.
+- **Multi-Selection for Release Channels**: Select multiple release channels at once in interactive mode using checkbox-style selection.
 - **Traditional Text Input**: Fallback to traditional text input when needed.
 - **Generate Next Version**: Automatically generate the next version based on the selected module and release type.
 - **Create Git Tag**: Create a Git tag for the generated version.
+- **Batch Tag Creation**: Create tags for multiple release channels simultaneously.
 
 ## Installation
 
@@ -34,8 +36,12 @@ version -i
 This will show a terminal UI where you can:
 - Navigate through available modules using arrow keys
 - Navigate through available release channels using arrow keys
-- Press Enter to select an option
+- **Select multiple release channels using space bar** (new feature!)
+- Press Enter to confirm your selection(s)
 - Press 'q' to quit
+
+**Multi-Selection for Release Channels:**
+In interactive mode, you can now select multiple release channels at once. Use the space bar to toggle selection of individual release channels, and press Enter to confirm. This allows you to create tags for multiple releases simultaneously (e.g., dev, staging, and prod all at once).
 
 ### Traditional Mode
 
@@ -56,8 +62,14 @@ Examples:
 # Interactive mode
 version -i
 
-# Direct specification
+# Interactive mode with multi-selection (select multiple release channels)
+version -i
+
+# Direct specification (single release)
 version -m myapp -r production
+
+# Direct specification (multiple releases)
+version -m myapp -r dev,staging,prod
 
 # Mixed mode (interactive for missing values)
 version -i -m myapp
