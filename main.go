@@ -57,6 +57,16 @@ type listModel struct {
 	done     bool
 }
 
+// multiSelectModel is a multi-selection list model for bubbletea
+type multiSelectModel struct {
+	choices     []string
+	cursor      int
+	selected    map[int]bool
+	title       string
+	done        bool
+	multiSelect bool
+}
+
 func (m listModel) Init() tea.Cmd {
 	return nil
 }
@@ -107,6 +117,78 @@ func (m listModel) View() string {
 	return s
 }
 
+func (m multiSelectModel) Init() tea.Cmd {
+	return nil
+}
+
+func (m multiSelectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "ctrl+c", "q", "esc":
+			return m, tea.Quit
+		case "enter":
+			// Finalize selection
+			m.done = true
+			return m, tea.Quit
+		case " ":
+			// Toggle selection for current item
+			if len(m.choices) > 0 {
+				if m.selected == nil {
+					m.selected = make(map[int]bool)
+				}
+				m.selected[m.cursor] = !m.selected[m.cursor]
+			}
+		case "up", "k":
+			if m.cursor > 0 {
+				m.cursor--
+			}
+		case "down", "j":
+			if m.cursor < len(m.choices)-1 {
+				m.cursor++
+			}
+		}
+	}
+	return m, nil
+}
+
+func (m multiSelectModel) View() string {
+	s := fmt.Sprintf("%s\n\n", m.title)
+
+	if len(m.choices) == 0 {
+		s += "No items available.\n\n"
+		s += "Press 'q' to quit."
+		return s
+	}
+
+	for i, choice := range m.choices {
+		cursor := " "
+		if m.cursor == i {
+			cursor = ">"
+		}
+		
+		checkbox := "[ ]"
+		if m.selected != nil && m.selected[i] {
+			checkbox = "[x]"
+		}
+		
+		s += fmt.Sprintf("%s %s %s\n", cursor, checkbox, choice)
+	}
+
+	selectedCount := 0
+	if m.selected != nil {
+		for _, selected := range m.selected {
+			if selected {
+				selectedCount++
+			}
+		}
+	}
+
+	s += fmt.Sprintf("\nSelected: %d items", selectedCount)
+	s += "\n\nUse space to select/deselect, enter to confirm, 'q' to quit."
+	return s
+}
+
 // runInteractiveSelection runs an interactive list selection and returns the selected item
 func runInteractiveSelection(title string, choices []string) (string, error) {
 	if len(choices) == 0 {
@@ -127,6 +209,41 @@ func runInteractiveSelection(title string, choices []string) (string, error) {
 
 	if m, ok := finalModel.(listModel); ok && m.done {
 		return m.selected, nil
+	}
+
+	return "", fmt.Errorf("no selection made")
+}
+
+// runInteractiveMultiSelection runs an interactive multi-selection and returns the selected items as comma-separated string
+func runInteractiveMultiSelection(title string, choices []string) (string, error) {
+	if len(choices) == 0 {
+		return "", fmt.Errorf("no choices available")
+	}
+
+	model := multiSelectModel{
+		choices:  choices,
+		title:    title,
+		cursor:   0,
+		selected: make(map[int]bool),
+	}
+
+	p := tea.NewProgram(model)
+	finalModel, err := p.Run()
+	if err != nil {
+		return "", err
+	}
+
+	if m, ok := finalModel.(multiSelectModel); ok && m.done {
+		var selectedItems []string
+		for i, selected := range m.selected {
+			if selected && i < len(m.choices) {
+				selectedItems = append(selectedItems, m.choices[i])
+			}
+		}
+		if len(selectedItems) == 0 {
+			return "", fmt.Errorf("no items selected")
+		}
+		return strings.Join(selectedItems, ","), nil
 	}
 
 	return "", fmt.Errorf("no selection made")
@@ -371,7 +488,7 @@ func main() {
 		if interactive {
 			// Interactive mode using bubbletea
 			if len(releases) > 0 {
-				selected, err := runInteractiveSelection("Select a release channel:", releases)
+				selected, err := runInteractiveMultiSelection("Select release channels (use space to select, enter to confirm):", releases)
 				if err != nil {
 					log.Error().Err(err).Msg("Error in interactive release channel selection")
 					os.Exit(1)
