@@ -64,7 +64,6 @@ type multiSelectModel struct {
 	selected    map[int]bool
 	title       string
 	done        bool
-	multiSelect bool
 }
 
 func (m listModel) Init() tea.Cmd {
