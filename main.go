@@ -444,7 +444,7 @@ func main() {
 		if interactive {
 			// Interactive mode using bubbletea
 			if len(modules) > 0 {
-				selected, err := runInteractiveSelection("Select a module:", modules)
+				selected, err := runInteractiveMultiSelection("Select modules (use space to select, enter to confirm):", modules)
 				if err != nil {
 					log.Error().Err(err).Msg("Error in interactive module selection")
 					os.Exit(1)
@@ -540,33 +540,42 @@ func main() {
 		os.Exit(1)
 	}
 
+	multiModule := []string{moduleName}
+	if strings.ContainsRune(moduleName, ',') {
+		log.Info().Msg("please note first module version will be used for all subsequent modules")
+		multiModule = strings.Split(moduleName, ",")
+	}
+
 	multiRelease := []string{releaseChannel}
 	if strings.ContainsRune(releaseChannel, ',') {
 		log.Info().Msg("please note first release channel version will be used for all subsequent release channels")
 		multiRelease = strings.Split(releaseChannel, ",")
 	}
 
-	// Read and display the current version
-	currentVersion, err := parseCurrentVersion(moduleName, multiRelease)
-	if err != nil {
-		log.Error().Err(err).Msgf("Error reading current version: %v", err)
-		return
-	}
-
-	log.Info().Interface("version", currentVersion).Msgf("Current version")
-	for _, r := range multiRelease {
-		// Generate and display the next version
-		nextVersion := generateNextVersion(moduleName, r, currentVersion)
-		if nextVersion == "" {
-			log.Error().Msg("Error generating next version. Exiting.")
+	// Process each module
+	for _, module := range multiModule {
+		// Read and display the current version for this module
+		currentVersion, err := parseCurrentVersion(module, multiRelease)
+		if err != nil {
+			log.Error().Err(err).Msgf("Error reading current version for module %s: %v", module, err)
 			return
 		}
 
-		log.Info().Msgf("Generated next version: %s", nextVersion)
+		log.Info().Str("module", module).Interface("version", currentVersion).Msgf("Current version")
+		for _, r := range multiRelease {
+			// Generate and display the next version
+			nextVersion := generateNextVersion(module, r, currentVersion)
+			if nextVersion == "" {
+				log.Error().Msgf("Error generating next version for module %s, release %s. Exiting.", module, r)
+				return
+			}
 
-		if err = createGitTag(nextVersion); err != nil {
-			log.Error().Msg("Error creating git tag. Exiting.")
-			return
+			log.Info().Msgf("Generated next version: %s", nextVersion)
+
+			if err = createGitTag(nextVersion); err != nil {
+				log.Error().Msgf("Error creating git tag for %s. Exiting.", nextVersion)
+				return
+			}
 		}
 	}
 

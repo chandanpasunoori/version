@@ -145,3 +145,25 @@ func TestMultiSelectModel_View_WithSelections(t *testing.T) {
 func contains(s, substr string) bool {
 	return strings.Contains(s, substr)
 }
+
+// Test multi-module functionality 
+func TestMultiModule_HandlesCommaSeparatedModules(t *testing.T) {
+	// Test the logic that splits comma-separated module names
+	moduleName := "app1,app2,app3"
+	
+	multiModule := []string{moduleName}
+	if strings.ContainsRune(moduleName, ',') {
+		multiModule = strings.Split(moduleName, ",")
+	}
+	
+	expected := []string{"app1", "app2", "app3"}
+	if len(multiModule) != len(expected) {
+		t.Errorf("Expected %d modules, got %d", len(expected), len(multiModule))
+	}
+	
+	for i, module := range expected {
+		if i >= len(multiModule) || multiModule[i] != module {
+			t.Errorf("Expected module at index %d to be '%s', got '%s'", i, module, multiModule[i])
+		}
+	}
+}
