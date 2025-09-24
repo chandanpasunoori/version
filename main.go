@@ -165,12 +165,11 @@ func (m multiSelectModel) View() string {
 		if m.cursor == i {
 			cursor = ">"
 		}
-		
+
 		checkbox := "[ ]"
 		if m.selected != nil && m.selected[i] {
 			checkbox = "[x]"
 		}
-		
 		s += fmt.Sprintf("%s %s %s\n", cursor, checkbox, choice)
 	}
 
