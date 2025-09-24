@@ -5,6 +5,7 @@ go 1.23.0
 toolchain go1.24.6
 
 require (
+	github.com/charmbracelet/bubbletea v1.3.7
 	github.com/go-git/go-git/v5 v5.16.2
 	github.com/rs/zerolog v1.31.0
 )
@@ -14,7 +15,6 @@ require (
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/ProtonMail/go-crypto v1.1.6 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
-	github.com/charmbracelet/bubbletea v1.3.7 // indirect
 	github.com/charmbracelet/colorprofile v0.2.3-0.20250311203215-f60798e515dc // indirect
 	github.com/charmbracelet/lipgloss v1.1.0 // indirect
 	github.com/charmbracelet/x/ansi v0.10.1 // indirect
