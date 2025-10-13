@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -523,7 +524,7 @@ func TestCreateGitTag(t *testing.T) {
 				t.Fatalf("Failed to change directory: %v", err)
 			}
 
-			err = createGitTag(tt.tagName)
+			err = createGitTag(tt.tagName, "")
 
 			if tt.expectError {
 				if err == nil {
@@ -584,7 +585,7 @@ func TestCreateGitTag_ErrorConditions(t *testing.T) {
 		}
 
 		// Try to create the same tag again - should fail
-		err = createGitTag("existing/tag/v1.0.0")
+		err = createGitTag("existing/tag/v1.0.0", "")
 		if err == nil {
 			t.Errorf("Expected error when creating duplicate tag, but got none")
 		}
@@ -609,7 +610,7 @@ func TestCreateGitTag_ErrorConditions(t *testing.T) {
 			t.Fatalf("Failed to change directory: %v", err)
 		}
 
-		err = createGitTag("test/tag/v1.0.0")
+		err = createGitTag("test/tag/v1.0.0", "")
 		if err == nil {
 			t.Errorf("Expected error when creating tag in non-git directory, but got none")
 		}
@@ -734,5 +735,267 @@ func BenchmarkParseCurrentVersion(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		parseCurrentVersion("testmodule", []string{"dev"})
+	}
+}
+
+// Test getLastNCommits function
+func TestGetLastNCommits(t *testing.T) {
+	// Create a test repository with multiple commits
+	tempDir, err := os.MkdirTemp("", "version-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp directory: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	originalDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Failed to get current directory: %v", err)
+	}
+	defer os.Chdir(originalDir)
+
+	err = os.Chdir(tempDir)
+	if err != nil {
+		t.Fatalf("Failed to change directory: %v", err)
+	}
+
+	// Initialize git repository
+	repo, err := git.PlainInit(tempDir, false)
+	if err != nil {
+		t.Fatalf("Failed to initialize git repository: %v", err)
+	}
+
+	w, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("Failed to get worktree: %v", err)
+	}
+
+	// Create multiple commits
+	commitMessages := []string{"First commit", "Second commit", "Third commit", "Fourth commit", "Fifth commit", "Sixth commit"}
+	for i, msg := range commitMessages {
+		// Create a test file
+		filename := fmt.Sprintf("test%d.txt", i)
+		err = os.WriteFile(filename, []byte(fmt.Sprintf("test content %d", i)), 0644)
+		if err != nil {
+			t.Fatalf("Failed to create test file: %v", err)
+		}
+
+		_, err = w.Add(filename)
+		if err != nil {
+			t.Fatalf("Failed to add file to index: %v", err)
+		}
+
+		_, err = w.Commit(msg, &git.CommitOptions{
+			Author: &object.Signature{
+				Name:  "Test User",
+				Email: "test@example.com",
+				When:  time.Now(),
+			},
+		})
+		if err != nil {
+			t.Fatalf("Failed to commit: %v", err)
+		}
+	}
+
+	// Test getting last 5 commits
+	hashes, displays, err := getLastNCommits(5)
+	if err != nil {
+		t.Fatalf("getLastNCommits() error: %v", err)
+	}
+
+	if len(hashes) != 5 {
+		t.Errorf("Expected 5 commit hashes, got %d", len(hashes))
+	}
+
+	if len(displays) != 5 {
+		t.Errorf("Expected 5 commit displays, got %d", len(displays))
+	}
+
+	// Verify each display contains a short hash and message
+	for i, display := range displays {
+		if len(display) < 10 {
+			t.Errorf("Display string too short: %s", display)
+		}
+		// Check that it contains the expected commit message (in reverse order)
+		expectedMsg := commitMessages[len(commitMessages)-1-i]
+		if !strings.Contains(display, expectedMsg) {
+			t.Errorf("Display %d should contain '%s', got: %s", i, expectedMsg, display)
+		}
+	}
+
+	// Test getting more commits than available
+	hashes, displays, err = getLastNCommits(10)
+	if err != nil {
+		t.Fatalf("getLastNCommits(10) error: %v", err)
+	}
+
+	if len(hashes) != 6 {
+		t.Errorf("Expected 6 commit hashes (all commits), got %d", len(hashes))
+	}
+}
+
+// Test createGitTag with specific commit hash
+func TestCreateGitTagWithCommitHash(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "version-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp directory: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	originalDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Failed to get current directory: %v", err)
+	}
+	defer os.Chdir(originalDir)
+
+	err = os.Chdir(tempDir)
+	if err != nil {
+		t.Fatalf("Failed to change directory: %v", err)
+	}
+
+	// Initialize git repository
+	repo, err := git.PlainInit(tempDir, false)
+	if err != nil {
+		t.Fatalf("Failed to initialize git repository: %v", err)
+	}
+
+	w, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("Failed to get worktree: %v", err)
+	}
+
+	// Create first commit
+	err = os.WriteFile("test1.txt", []byte("test content 1"), 0644)
+	if err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+
+	_, err = w.Add("test1.txt")
+	if err != nil {
+		t.Fatalf("Failed to add file to index: %v", err)
+	}
+
+	commit1, err := w.Commit("First commit", &git.CommitOptions{
+		Author: &object.Signature{
+			Name:  "Test User",
+			Email: "test@example.com",
+			When:  time.Now(),
+		},
+	})
+	if err != nil {
+		t.Fatalf("Failed to commit: %v", err)
+	}
+
+	// Create second commit
+	err = os.WriteFile("test2.txt", []byte("test content 2"), 0644)
+	if err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+
+	_, err = w.Add("test2.txt")
+	if err != nil {
+		t.Fatalf("Failed to add file to index: %v", err)
+	}
+
+	_, err = w.Commit("Second commit", &git.CommitOptions{
+		Author: &object.Signature{
+			Name:  "Test User",
+			Email: "test@example.com",
+			When:  time.Now(),
+		},
+	})
+	if err != nil {
+		t.Fatalf("Failed to commit: %v", err)
+	}
+
+	// Tag the first commit using its hash
+	err = createGitTag("myapp/dev/v1.0.0", commit1.String())
+	if err != nil {
+		t.Errorf("Failed to create tag on specific commit: %v", err)
+	}
+
+	// Verify the tag exists and points to the correct commit
+	tagRef, err := repo.Tag("myapp/dev/v1.0.0")
+	if err != nil {
+		t.Errorf("Failed to find created tag: %v", err)
+	}
+
+	if tagRef.Hash() != commit1 {
+		t.Errorf("Tag points to wrong commit. Expected %s, got %s", commit1.String(), tagRef.Hash().String())
+	}
+
+	// Test creating another tag on the same commit
+	err = createGitTag("myapp/prod/v1.0.0", commit1.String())
+	if err != nil {
+		t.Errorf("Failed to create second tag on same commit: %v", err)
+	}
+	
+	// Verify tag was created
+	tagRef2, err := repo.Tag("myapp/prod/v1.0.0")
+	if err != nil {
+		t.Errorf("Failed to find second tag: %v", err)
+	}
+	
+	if tagRef2.Hash() != commit1 {
+		t.Errorf("Second tag points to wrong commit")
+	}
+}
+
+// Test createGitTag with invalid commit hash
+func TestCreateGitTagWithInvalidCommitHash(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "version-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp directory: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	originalDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Failed to get current directory: %v", err)
+	}
+	defer os.Chdir(originalDir)
+
+	err = os.Chdir(tempDir)
+	if err != nil {
+		t.Fatalf("Failed to change directory: %v", err)
+	}
+
+	// Initialize git repository
+	repo, err := git.PlainInit(tempDir, false)
+	if err != nil {
+		t.Fatalf("Failed to initialize git repository: %v", err)
+	}
+
+	w, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("Failed to get worktree: %v", err)
+	}
+
+	// Create a commit
+	err = os.WriteFile("test.txt", []byte("test content"), 0644)
+	if err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+
+	_, err = w.Add("test.txt")
+	if err != nil {
+		t.Fatalf("Failed to add file to index: %v", err)
+	}
+
+	_, err = w.Commit("Test commit", &git.CommitOptions{
+		Author: &object.Signature{
+			Name:  "Test User",
+			Email: "test@example.com",
+			When:  time.Now(),
+		},
+	})
+	if err != nil {
+		t.Fatalf("Failed to commit: %v", err)
+	}
+
+	// Try to create tag with invalid commit hash
+	invalidHash := "0000000000000000000000000000000000000000"
+	err = createGitTag("myapp/dev/v1.0.0", invalidHash)
+	if err == nil {
+		t.Errorf("Expected error when creating tag with invalid commit hash, but got none")
 	}
 }

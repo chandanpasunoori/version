@@ -5,6 +5,7 @@ Welcome to the Tag Generator CLI. This CLI helps you generate and manage version
 ## Features
 
 - **Interactive Module Selection**: Choose the module interactively using a beautiful terminal interface powered by bubbletea.
+- **Commit Selection**: Tag specific commits by hash or select from the last 5 commits in interactive mode.
 - **Multi-Selection for Release Channels**: Select multiple release channels at once in interactive mode using checkbox-style selection.
 - **Traditional Text Input**: Fallback to traditional text input when needed.
 - **Generate Next Version**: Automatically generate the next version based on the selected module and release type.
@@ -35,10 +36,16 @@ version -i
 
 This will show a terminal UI where you can:
 - Navigate through available modules using arrow keys
+- **Select commit to tag** - Choose between current commit (HEAD) or select from the last 5 commits
 - Navigate through available release channels using arrow keys
 - **Select multiple release channels using space bar** (new feature!)
 - Press Enter to confirm your selection(s)
 - Press 'q' to quit
+
+**Commit Selection:**
+In interactive mode, you can choose which commit to tag:
+- **Current commit (HEAD)**: Default option, tags the latest commit
+- **Select from last 5 commits**: View and select from a list of the most recent 5 commits with their messages
 
 **Multi-Selection for Release Channels:**
 In interactive mode, you can now select multiple release channels at once. Use the space bar to toggle selection of individual release channels, and press Enter to confirm. This allows you to create tags for multiple releases simultaneously (e.g., dev, staging, and prod all at once).
@@ -56,6 +63,7 @@ version
 - `-m string`: Specify module name directly
 - `-r string`: Specify release channel directly  
 - `-i`: Enable interactive mode with bubbletea list selection
+- `-c string`: Specify commit hash (short or full) to tag, defaults to HEAD if not specified
 
 Examples:
 ```bash
@@ -70,6 +78,12 @@ version -m myapp -r production
 
 # Direct specification (multiple releases)
 version -m myapp -r dev,staging,prod
+
+# Tag a specific commit (using commit hash)
+version -m myapp -r production -c abc1234
+
+# Tag a specific commit with full hash
+version -m myapp -r production -c abc1234567890abcdef1234567890abcdef1234
 
 # Mixed mode (interactive for missing values)
 version -i -m myapp
