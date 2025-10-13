@@ -14,6 +14,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
@@ -46,6 +47,7 @@ var (
 	moduleName     string
 	releaseChannel string
 	interactive    bool
+	commitHash     string
 )
 
 // listModel is a simple list selection model for bubbletea
@@ -247,6 +249,51 @@ func runInteractiveMultiSelection(title string, choices []string) (string, error
 	return "", fmt.Errorf("no selection made")
 }
 
+// getLastNCommits returns the last N commits with their hash and message
+func getLastNCommits(n int) ([]string, []string, error) {
+	repo, err := git.PlainOpen(".")
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Get the HEAD reference
+	head, err := repo.Head()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Get commit iterator
+	commits, err := repo.Log(&git.LogOptions{From: head.Hash()})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var commitHashes []string
+	var commitDisplays []string
+	count := 0
+
+	err = commits.ForEach(func(c *object.Commit) error {
+		if count >= n {
+			return fmt.Errorf("done") // Stop iteration
+		}
+		shortHash := c.Hash.String()[:7]
+		message := strings.Split(c.Message, "\n")[0] // First line only
+		if len(message) > 50 {
+			message = message[:47] + "..."
+		}
+		commitHashes = append(commitHashes, c.Hash.String())
+		commitDisplays = append(commitDisplays, fmt.Sprintf("%s - %s", shortHash, message))
+		count++
+		return nil
+	})
+
+	if err != nil && err.Error() != "done" {
+		return nil, nil, err
+	}
+
+	return commitHashes, commitDisplays, nil
+}
+
 // Function to parse the current version from the version file
 func getCurrentModules() ([]string, []string, error) {
 	// Open the git repository
@@ -392,7 +439,7 @@ func generateNextVersion(moduleName, releaseChannel string, currentVersion Versi
 }
 
 // Function to create a git tag
-func createGitTag(tag string) error {
+func createGitTag(tag string, commitHashStr string) error {
 	// Open the git repository
 	repo, err := git.PlainOpen(".")
 	if err != nil {
@@ -400,21 +447,62 @@ func createGitTag(tag string) error {
 		return err
 	}
 
-	// Get the HEAD reference to find the current commit
-	head, err := repo.Head()
-	if err != nil {
-		log.Error().Err(err).Str("tag", tag).Msg("Failed to get HEAD reference")
-		return err
+	var hash plumbing.Hash
+	
+	if commitHashStr == "" {
+		// Default to HEAD if no commit hash specified
+		head, err := repo.Head()
+		if err != nil {
+			log.Error().Err(err).Str("tag", tag).Msg("Failed to get HEAD reference")
+			return err
+		}
+		hash = head.Hash()
+	} else {
+		// Resolve the commit hash (handles both short and full hashes)
+		if len(commitHashStr) == 40 {
+			// Full hash
+			hash = plumbing.NewHash(commitHashStr)
+		} else {
+			// Short hash - need to resolve it
+			resolved := false
+			iter, err := repo.CommitObjects()
+			if err != nil {
+				log.Error().Err(err).Str("tag", tag).Msg("Failed to get commit objects")
+				return err
+			}
+			
+			err = iter.ForEach(func(c *object.Commit) error {
+				if strings.HasPrefix(c.Hash.String(), commitHashStr) {
+					hash = c.Hash
+					resolved = true
+					return fmt.Errorf("found") // Stop iteration
+				}
+				return nil
+			})
+			
+			if !resolved {
+				err := fmt.Errorf("commit not found: %s", commitHashStr)
+				log.Error().Err(err).Str("tag", tag).Str("commit", commitHashStr).Msg("Failed to resolve commit hash")
+				return err
+			}
+		}
+		
+		// Verify the commit exists
+		_, err := repo.CommitObject(hash)
+		if err != nil {
+			log.Error().Err(err).Str("tag", tag).Str("commit", commitHashStr).Msg("Failed to find commit")
+			return err
+		}
 	}
 
 	// Create the tag
-	_, err = repo.CreateTag(tag, head.Hash(), nil)
+	_, err = repo.CreateTag(tag, hash, nil)
 	if err != nil {
 		log.Error().Err(err).Str("tag", tag).Msg("Git tag create error")
 		return err
 	}
 
-	log.Info().Str("tag", tag).Msg("Git tag created successfully")
+	log.Info().Str("tag", tag).Str("commit", hash.String()[:7]).Msg("Git tag created successfully")
 	return nil
 }
 
@@ -427,6 +515,7 @@ func main() {
 	flag.StringVar(&moduleName, "m", "", "module name")
 	flag.StringVar(&releaseChannel, "r", "", "release channel")
 	flag.BoolVar(&interactive, "i", false, "enable interactive mode with bubbletea list selection")
+	flag.StringVar(&commitHash, "c", "", "commit hash (short or full) to tag, defaults to HEAD if not specified")
 	flag.Parse()
 
 	log.Info().Msg("Welcome to the Tag Generator CLI")
@@ -480,6 +569,44 @@ func main() {
 				}
 			}
 		}
+	}
+
+	// Handle commit selection in interactive mode
+	if interactive && len(commitHash) == 0 {
+		// Offer commit selection: current or list of last 5
+		commitChoices := []string{"Current commit (HEAD)", "Select from last 5 commits"}
+		commitChoice, err := runInteractiveSelection("Select commit to tag:", commitChoices)
+		if err != nil {
+			log.Error().Err(err).Msg("Error in commit selection")
+			os.Exit(1)
+			return
+		}
+
+		if commitChoice == "Select from last 5 commits" {
+			hashes, displays, err := getLastNCommits(5)
+			if err != nil {
+				log.Error().Err(err).Msg("Error fetching commits")
+				os.Exit(1)
+				return
+			}
+
+			if len(displays) > 0 {
+				selected, err := runInteractiveSelection("Select a commit:", displays)
+				if err != nil {
+					log.Error().Err(err).Msg("Error in commit selection")
+					os.Exit(1)
+					return
+				}
+				// Find the index of the selected display string
+				for i, display := range displays {
+					if display == selected {
+						commitHash = hashes[i]
+						break
+					}
+				}
+			}
+		}
+		// If "Current commit (HEAD)" was selected, commitHash remains empty (default)
 	}
 
 	if len(releaseChannel) == 0 {
@@ -564,7 +691,7 @@ func main() {
 
 		log.Info().Msgf("Generated next version: %s", nextVersion)
 
-		if err = createGitTag(nextVersion); err != nil {
+		if err = createGitTag(nextVersion, commitHash); err != nil {
 			log.Error().Msg("Error creating git tag. Exiting.")
 			return
 		}
