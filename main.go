@@ -46,6 +46,7 @@ var (
 	moduleName     string
 	releaseChannel string
 	interactive    bool
+	simple         bool
 )
 
 // listModel is a simple list selection model for bubbletea
@@ -391,6 +392,100 @@ func generateNextVersion(moduleName, releaseChannel string, currentVersion Versi
 	return fmt.Sprintf("%s/%s/v%d.%d.%d", moduleName, releaseChannel, nextVersion.Major, nextVersion.Minor, nextVersion.Patch)
 }
 
+// parseCurrentSimpleVersion finds the highest version from simple vX.Y.Z tags
+func parseCurrentSimpleVersion() (Version, error) {
+	repo, err := git.PlainOpen(".")
+	if err != nil {
+		return Version{}, err
+	}
+
+	tagRefs, err := repo.Tags()
+	if err != nil {
+		return Version{}, err
+	}
+
+	re := regexp.MustCompile(`^v(\d+)\.(\d+)\.(\d+)$`)
+	var versions SemVerList
+	err = tagRefs.ForEach(func(ref *plumbing.Reference) error {
+		if matches := re.FindStringSubmatch(ref.Name().Short()); len(matches) == 4 {
+			major, _ := strconv.Atoi(matches[1])
+			minor, _ := strconv.Atoi(matches[2])
+			patch, _ := strconv.Atoi(matches[3])
+			versions = append(versions, Version{Major: major, Minor: minor, Patch: patch})
+		}
+		return nil
+	})
+	if err != nil {
+		return Version{}, err
+	}
+
+	if len(versions) == 0 {
+		return Version{Major: 0, Minor: 0, Patch: 0}, nil
+	}
+
+	sort.Sort(sort.Reverse(versions))
+	return versions[0], nil
+}
+
+// generateNextSimpleVersion increments the version based on bumpType (patch/minor/major)
+func generateNextSimpleVersion(current Version, bumpType string) string {
+	next := current
+	switch bumpType {
+	case "major":
+		next.Major++
+		next.Minor = 0
+		next.Patch = 0
+	case "minor":
+		next.Minor++
+		next.Patch = 0
+	default: // patch
+		next.Patch++
+	}
+	return fmt.Sprintf("v%d.%d.%d", next.Major, next.Minor, next.Patch)
+}
+
+// runSimpleMode handles the -s flag flow: pick bump type and create a vX.Y.Z tag
+func runSimpleMode() {
+	current, err := parseCurrentSimpleVersion()
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to read current simple version")
+		os.Exit(1)
+	}
+
+	log.Info().Msgf("Current version: v%d.%d.%d", current.Major, current.Minor, current.Patch)
+
+	bumpTypes := []string{"patch", "minor", "major"}
+	var bumpType string
+
+	if interactive {
+		selected, err := runInteractiveSelection("Select version bump type:", bumpTypes)
+		if err != nil {
+			log.Error().Err(err).Msg("Error in interactive bump type selection")
+			os.Exit(1)
+		}
+		bumpType = selected
+	} else {
+		log.Info().Msg("Select bump type (patch/minor/major):")
+		scanner := bufio.NewScanner(os.Stdin)
+		scanner.Scan()
+		bumpType = strings.TrimSpace(scanner.Text())
+		if !slices.Contains(bumpTypes, bumpType) {
+			log.Error().Msgf("invalid bump type: %q (must be patch, minor, or major)", bumpType)
+			os.Exit(1)
+		}
+	}
+
+	nextTag := generateNextSimpleVersion(current, bumpType)
+	log.Info().Msgf("Generated next version: %s", nextTag)
+
+	if err := createGitTag(nextTag); err != nil {
+		log.Error().Msg("Error creating git tag. Exiting.")
+		os.Exit(1)
+	}
+
+	log.Info().Msg("Tags updated in local repository, 'git push --tags' and enjoy")
+}
+
 // Function to create a git tag
 func createGitTag(tag string) error {
 	// Open the git repository
@@ -427,9 +522,15 @@ func main() {
 	flag.StringVar(&moduleName, "m", "", "module name")
 	flag.StringVar(&releaseChannel, "r", "", "release channel")
 	flag.BoolVar(&interactive, "i", false, "enable interactive mode with bubbletea list selection")
+	flag.BoolVar(&simple, "s", false, "simple mode: tag as vX.Y.Z (no module/release prefix)")
 	flag.Parse()
 
 	log.Info().Msg("Welcome to the Tag Generator CLI")
+
+	if simple {
+		runSimpleMode()
+		return
+	}
 
 	modules, releases, err := getCurrentModules()
 	if err != nil {
