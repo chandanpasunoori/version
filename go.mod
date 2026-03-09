@@ -1,8 +1,6 @@
 module github.com/chandanpasunoori/version
 
-go 1.23.0
-
-toolchain go1.24.6
+go 1.26.0
 
 require (
 	github.com/go-git/go-git/v5 v5.16.2
