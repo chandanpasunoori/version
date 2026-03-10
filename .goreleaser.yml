@@ -17,11 +17,12 @@ builds:
       - -s -w
 
 archives:
-  - format: tar.gz
+  - formats: ['tar.gz']
     name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
 
-brews:
+homebrew_casks:
   - name: version
+    directory: Casks
     repository:
       owner: chandanpasunoori
       name: homebrew-tap
@@ -29,7 +30,4 @@ brews:
     homepage: https://github.com/chandanpasunoori/version
     description: Git version tag generator CLI
     license: MIT
-    install: |
-      bin.install "version"
-    test: |
-      system "#{bin}/version", "--help"
+    binary: version
