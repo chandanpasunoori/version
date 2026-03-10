@@ -30,4 +30,4 @@ homebrew_casks:
     homepage: https://github.com/chandanpasunoori/version
     description: Git version tag generator CLI
     license: MIT
-    binary: version
+    binaries: ['version']
