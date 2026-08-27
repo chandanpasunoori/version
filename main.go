@@ -251,7 +251,10 @@ func runInteractiveMultiSelection(title string, choices []string) (string, error
 // Function to parse the current version from the version file
 func getCurrentModules() ([]string, []string, error) {
 	// Open the git repository
-	repo, err := git.PlainOpen(".")
+	repo, err := git.PlainOpenWithOptions(".", &git.PlainOpenOptions{
+		DetectDotGit:          true,
+		EnableDotGitCommonDir: true,
+	})
 	if err != nil {
 		return []string{}, []string{}, err
 	}
@@ -308,7 +311,10 @@ func getCurrentModules() ([]string, []string, error) {
 // Function to parse the current version from the version file
 func parseCurrentVersion(moduleName string, releaseChannel []string) (Version, error) {
 	// Open the git repository
-	repo, err := git.PlainOpen(".")
+	repo, err := git.PlainOpenWithOptions(".", &git.PlainOpenOptions{
+		DetectDotGit:          true,
+		EnableDotGitCommonDir: true,
+	})
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to open git repository")
 		return Version{Major: 0, Minor: 0, Patch: 0}, nil
@@ -394,7 +400,10 @@ func generateNextVersion(moduleName, releaseChannel string, currentVersion Versi
 
 // parseCurrentSimpleVersion finds the highest version from simple vX.Y.Z tags
 func parseCurrentSimpleVersion() (Version, error) {
-	repo, err := git.PlainOpen(".")
+	repo, err := git.PlainOpenWithOptions(".", &git.PlainOpenOptions{
+		DetectDotGit:          true,
+		EnableDotGitCommonDir: true,
+	})
 	if err != nil {
 		return Version{}, err
 	}
@@ -489,7 +498,10 @@ func runSimpleMode() {
 // Function to create a git tag
 func createGitTag(tag string) error {
 	// Open the git repository
-	repo, err := git.PlainOpen(".")
+	repo, err := git.PlainOpenWithOptions(".", &git.PlainOpenOptions{
+		DetectDotGit:          true,
+		EnableDotGitCommonDir: true,
+	})
 	if err != nil {
 		log.Error().Err(err).Str("tag", tag).Msg("Failed to open git repository")
 		return err
